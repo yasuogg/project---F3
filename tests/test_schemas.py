@@ -11,9 +11,9 @@ def test_candidate_to_browsergym_click():
 
 
 def test_candidate_to_browsergym_type():
-    c = ActionCandidate(action_type="type", bid="5", text="hello", p=0.5, rationale="r")
+    c = ActionCandidate(action_type="fill", bid="5", text="hello", p=0.5, rationale="r")
     s = c.to_browsergym_action()
-    assert "fill(" in s.lower() or "type(" in s.lower()
+    assert "fill(" in s.lower()
     assert "hello" in s
 
 

@@ -72,14 +72,28 @@ def make_env(
     shape_reward: bool = True,
 ) -> gym.Env:
     """Build a single BrowserGym env, configured for our action space."""
-    env = gym.make(
-        task_name,
-        headless=headless,
-        action_mapping=None,  # use high-level python actions
-        viewport={"width": viewport[0], "height": viewport[1]},
-        slow_mo=0,
-        wait_for_user_message=False,
-    )
+    # browsergym 0.13+ registers ids as 'browsergym/miniwob.<task>'; accept either
+    if not task_name.startswith("browsergym/"):
+        candidates = [f"browsergym/{task_name}", task_name]
+    else:
+        candidates = [task_name]
+    last_err: Exception | None = None
+    env = None
+    for tid in candidates:
+        try:
+            env = gym.make(
+                tid,
+                headless=headless,
+                action_mapping=None,  # use high-level python actions
+                viewport={"width": viewport[0], "height": viewport[1]},
+                slow_mo=0,
+                wait_for_user_message=False,
+            )
+            break
+        except Exception as e:
+            last_err = e
+    if env is None:
+        raise RuntimeError(f"Could not register env for {task_name!r}; tried {candidates}") from last_err
     env = gym.wrappers.TimeLimit(env, max_episode_steps=max_steps)
     if shape_reward:
         env = RewardShapeWrapper(env, **(reward_kwargs or {}))
