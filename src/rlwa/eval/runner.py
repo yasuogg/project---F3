@@ -29,6 +29,13 @@ def run_eval(
     env_kwargs: dict | None = None,
     workers: int = 1,
 ) -> List[EpisodeRecord]:
+    # Playwright's sync API is bound to a single thread; using a ThreadPoolExecutor
+    # produces 'greenlet.error: cannot switch to a different thread' and silent failures.
+    # The Gemini calls are already parallelised via AsyncGeminiPlanner inside the agents.
+    if workers > 1:
+        from rlwa.utils.logging import warn
+        warn(f"workers={workers} requested but Playwright is sync; forcing workers=1")
+        workers = 1
     env_kwargs = env_kwargs or {}
     eps: List[EpisodeRecord] = []
     writer = JsonlWriter(out_jsonl, mode="w") if out_jsonl else None

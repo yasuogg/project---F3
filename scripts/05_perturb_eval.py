@@ -53,7 +53,15 @@ def main(
 
     jobs = [(t, s) for t in DEFAULT_TASKS for s in range(seeds)]
     pbar = tqdm(total=len(jobs), desc=f"perturb(x{workers})")
-    with ThreadPoolExecutor(max_workers=workers) as ex:
+    if workers > 1:
+        pbar.write(f"workers={workers} but Playwright is sync; forcing workers=1"); workers = 1
+    if workers == 1:
+        for t, s in jobs:
+            try: ep = _run(t, s)
+            except Exception as e: pbar.write(f"! {t}/{s}: {e}"); pbar.update(1); continue
+            eps.append(ep); writer.write(ep); pbar.update(1); pbar.set_postfix(succ=int(ep.success))
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
         futs = {ex.submit(_run, t, s): (t, s) for t, s in jobs}
         for fut in as_completed(futs):
             t, s = futs[fut]

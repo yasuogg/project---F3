@@ -44,9 +44,23 @@ def main(
 
     jobs = [(task, seed) for task in ec.tasks for seed in range(episodes_per_task)]
     n_total = 0; n_succ = 0
+    # Playwright sync API is single-threaded; AsyncGeminiPlanner handles parallelism.
+    if workers > 1:
+        info(f"workers={workers} requested but Playwright is sync; forcing workers=1"); workers = 1
     info(f"Launching {len(jobs)} episodes across {workers} parallel workers")
 
-    with ThreadPoolExecutor(max_workers=workers) as ex:
+    if workers == 1:
+        for t, s in tqdm(jobs, desc="bc"):
+            try:
+                ep = _run_one(t, s, agent, max_steps, headless)
+            except Exception as e:
+                info(f"  ! {t}/{s} failed: {e}"); continue
+            n_total += 1
+            if ep.success:
+                n_succ += 1
+                writer.write(ep)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
         futs = {ex.submit(_run_one, t, s, agent, max_steps, headless): (t, s) for t, s in jobs}
         for fut in as_completed(futs):
             t, s = futs[fut]

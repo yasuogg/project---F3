@@ -75,6 +75,8 @@ def main(
                               for k in range(K)]
     raw_results: dict[tuple[str, int, int], tuple[bool, float]] = {}
     pbar = tqdm(total=len(jobs), desc=f"oracle(x{workers})")
+    if workers > 1:
+        pbar.write(f"workers={workers} but Playwright is sync; forcing workers=1"); workers = 1
 
     def _run(task, seed, k):
         env = make_env(task, seed=seed, headless=headless, max_steps=max_steps)
@@ -84,7 +86,18 @@ def main(
         finally:
             env.close()
 
-    with ThreadPoolExecutor(max_workers=workers) as ex:
+    if workers == 1:
+        for t, s, k in jobs:
+            try:
+                success, R = _run(t, s, k)
+            except Exception as e:
+                pbar.write(f"! {t}/{s}/{k}: {e}"); pbar.update(1); continue
+            raw_results[(t, s, k)] = (success, R)
+            writer.write({"task": t, "seed": s, "force_idx": k,
+                          "success": bool(success), "return": float(R)})
+            pbar.update(1)
+    else:
+     with ThreadPoolExecutor(max_workers=workers) as ex:
         futs = {ex.submit(_run, t, s, k): (t, s, k) for t, s, k in jobs}
         for fut in as_completed(futs):
             t, s, k = futs[fut]
