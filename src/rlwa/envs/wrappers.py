@@ -1,11 +1,35 @@
 """BrowserGym env factory + reward-shaping wrapper."""
 from __future__ import annotations
 import hashlib
+import os
+import subprocess
+from pathlib import Path
 from typing import Optional
 import gymnasium as gym
 
+
+def _ensure_miniwob_url():
+    """Make sure MINIWOB_URL points at miniwob html files; clone them if missing."""
+    if os.environ.get("MINIWOB_URL"):
+        return
+    cache = Path(os.environ.get("RLWA_CACHE", str(Path.home() / ".cache" / "rlwa")))
+    miniwob_dir = cache / "miniwob-plusplus"
+    html_dir = miniwob_dir / "miniwob" / "html" / "miniwob"
+    if not html_dir.is_dir():
+        cache.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "clone", "--depth", "1",
+             "https://github.com/Farama-Foundation/miniwob-plusplus.git",
+             str(miniwob_dir)],
+            check=True,
+        )
+    os.environ["MINIWOB_URL"] = f"file://{html_dir}/"
+
+
+_ensure_miniwob_url()
+
 # Importing browsergym.miniwob registers MiniWoB tasks with gym
-import browsergym.miniwob  # noqa: F401
+import browsergym.miniwob  # noqa: F401, E402
 
 
 class RewardShapeWrapper(gym.Wrapper):
