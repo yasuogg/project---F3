@@ -1,6 +1,7 @@
 """Smoke tests: validate action-candidate schemas and meta-action enumeration."""
 from rlwa.utils.schemas import ActionCandidate
-from rlwa.agents.action_space import META_ACTIONS, candidate_text
+from rlwa.agents.action_space import META_ACTIONS
+from rlwa.rl.featurize import candidate_text
 
 
 def test_candidate_to_browsergym_click():
