@@ -1,0 +1,27 @@
+defaults:
+  - _self_
+
+planner:
+  backend: gemini
+  model: gemini-2.0-flash
+  temperature: 0.7
+  top_p: 0.9
+  max_output_tokens: 1024
+  top_k_candidates: 5
+  max_retries: 5
+  retry_backoff_s: 2.0
+  use_som: true
+  enable_recovery_prompt: true
+
+encoder:
+  image_model: google/siglip-base-patch16-224
+  text_model: sentence-transformers/all-MiniLM-L6-v2
+  hidden_dim: 256
+  freeze: true
+
+policy:
+  n_candidates: 5            # must match planner.top_k_candidates
+  n_meta_actions: 2          # ABSTAIN (re-query VLM), REPORT_INFEASIBLE
+  dropout: 0.1
+
+checkpoint: data/checkpoints/ppo_best.pt

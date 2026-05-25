@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# data
+data/traces/*.jsonl
+data/checkpoints/*.pt
+data/checkpoints/*.pth
+data/eval/*.json
+wandb/
+
+# hf
+.cache/
+hf_cache/
+
+# OS
+.DS_Store
+Thumbs.db

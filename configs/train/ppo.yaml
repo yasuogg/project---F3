@@ -1,0 +1,33 @@
+train:
+  total_env_steps: 80_000
+  num_envs: 32                 # 80GB A100 + 196GB RAM handles this easily
+  rollout_len: 32
+  ppo_epochs: 4
+  minibatch_size: 64
+  lr: 3.0e-4
+  gamma: 0.99
+  lam: 0.95
+  clip_eps: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  kl_to_vlm: 0.10
+  kl_anneal_end: 0.02
+  kl_anneal_steps: 40_000
+  bc_init: data/checkpoints/bc.pt
+  save_dir: data/checkpoints
+  save_every: 5_000
+  log_every: 100
+  seed: 0
+
+bc:
+  traces: data/traces/bc.jsonl
+  epochs: 5
+  batch_size: 128
+  lr: 3.0e-4
+  out: data/checkpoints/bc.pt
+
+trace_collection:
+  episodes_per_task: 100
+  out: data/traces/bc.jsonl
+  filter_success_only: true

@@ -1,0 +1,45 @@
+[project]
+name = "rlwa"
+version = "0.1.0"
+description = "RL-Augmented Vision Web Agents for BrowserGym + MiniWoB++"
+requires-python = ">=3.10,<3.12"
+dependencies = [
+  "torch>=2.2,<2.6",
+  "torchvision",
+  "transformers>=4.45,<4.50",
+  "accelerate",
+  "sentence-transformers>=3.0",
+  "google-generativeai>=0.8.3",
+  "browsergym==0.13.3",
+  "browsergym-miniwob==0.13.3",
+  "playwright==1.47.0",
+  "gymnasium>=0.29",
+  "numpy<2.0",
+  "pillow>=10.0",
+  "opencv-python-headless",
+  "pydantic>=2.0",
+  "hydra-core>=1.3",
+  "omegaconf>=2.3",
+  "wandb",
+  "rich",
+  "tyro",
+  "tqdm",
+  "matplotlib",
+  "pandas",
+  "scipy",
+]
+
+[project.optional-dependencies]
+demo = ["gradio>=4.40"]
+dev = ["ruff", "ipykernel"]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

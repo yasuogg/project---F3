@@ -1,0 +1,15 @@
+defaults:
+  - _self_
+
+planner:
+  backend: gemini
+  model: gemini-2.0-flash
+  eval_model: gemini-2.5-flash   # used by ceiling baseline
+  temperature: 0.7
+  top_p: 0.9
+  max_output_tokens: 1024
+  top_k_candidates: 5
+  max_retries: 5
+  retry_backoff_s: 2.0
+  use_som: true
+  enable_recovery_prompt: true

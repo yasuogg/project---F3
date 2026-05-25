@@ -1,0 +1,29 @@
+# 8 curated MiniWoB tasks for the 3-day project
+task_suite: miniwob
+tasks:
+  - miniwob.click-button
+  - miniwob.click-checkboxes
+  - miniwob.click-tab-2
+  - miniwob.enter-text
+  - miniwob.enter-date
+  - miniwob.login-user
+  - miniwob.use-autocomplete
+  - miniwob.click-dialog
+
+held_out:
+  - miniwob.click-button-sequence
+  - miniwob.enter-time
+
+env:
+  headless: true
+  screenshot_size: [1280, 720]
+  max_steps: 25
+  action_set: high_level
+  # high_level uses bid-based actions: click(bid), fill(bid, text), ...
+
+reward:
+  task_w: 1.0
+  progress_w: 0.05
+  step_w: -0.01
+  recover_w: 0.2
+  invalid_w: -0.1
