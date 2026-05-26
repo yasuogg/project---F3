@@ -8,12 +8,12 @@ Usage:
     run_eval(agent, tasks, seeds, workers=1)
 
     # multi-process (production)
-    run_eval(None, tasks, seeds, workers=32, agent_factory=MyFactory())
+    run_eval(None, tasks, seeds, workers=8, agent_factory=MyFactory())
 """
 from __future__ import annotations
 from pathlib import Path
 from typing import List, Callable
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed, Future
 from tqdm import tqdm
 
 from rlwa.envs import make_env
@@ -22,7 +22,6 @@ from rlwa.utils.logging import JsonlWriter, ok, warn
 
 
 # ── per-process state ──────────────────────────────────────────────────────────
-# These globals live in worker processes only; the main process never sets them.
 
 _proc_agent = None
 
@@ -44,6 +43,11 @@ def _proc_run(
 
 # ── public API ─────────────────────────────────────────────────────────────────
 
+# Seconds to wait for a single episode before declaring it hung.
+# 25 steps × 15s/step (Gemini + browser) = 375s; 480s gives comfortable headroom.
+_EPISODE_TIMEOUT = 480
+
+
 def run_eval(
     agent,
     tasks: List[str],
@@ -62,6 +66,10 @@ def run_eval(
     workers>1  — spawns N processes; each calls agent_factory() once to build
                  its own agent+planner+browser. `agent` is unused in this path.
                  agent_factory must be picklable (top-level class or functools.partial).
+
+    Concurrency is capped at min(workers, len(jobs)) so we never launch more
+    browsers than there are episodes. A per-episode timeout (_EPISODE_TIMEOUT s)
+    prevents hung OOM-killed workers from blocking the run forever.
     """
     if workers > 1 and agent_factory is None:
         warn("workers>1 requires agent_factory; falling back to workers=1")
@@ -69,11 +77,15 @@ def run_eval(
 
     env_kwargs = env_kwargs or {}
     jobs = [(t, s) for t in tasks for s in seeds]
+
+    # Never spawn more processes than there are jobs — wastes memory/browsers.
+    effective_workers = min(workers, len(jobs)) if workers > 1 else 1
+
     eps: List[EpisodeRecord] = []
     writer = JsonlWriter(out_jsonl, mode="w") if out_jsonl else None
-    pbar = tqdm(total=len(jobs), desc=f"eval(x{workers})")
+    pbar = tqdm(total=len(jobs), desc=f"eval(x{effective_workers})")
 
-    if workers <= 1:
+    if effective_workers <= 1:
         for t, s in jobs:
             env = make_env(t, seed=s, headless=headless, max_steps=max_steps, **env_kwargs)
             try:
@@ -87,18 +99,25 @@ def run_eval(
             pbar.set_postfix(task=t.split(".")[-1], succ=int(ep.success))
     else:
         with ProcessPoolExecutor(
-            max_workers=workers,
+            max_workers=effective_workers,
             initializer=_proc_init,
             initargs=(agent_factory,),
         ) as pool:
-            futs = {
+            futs: dict[Future, tuple[str, int]] = {
                 pool.submit(_proc_run, t, s, max_steps, headless, env_kwargs): (t, s)
                 for t, s in jobs
             }
             for fut in as_completed(futs):
                 t, s = futs[fut]
                 try:
-                    ep = fut.result()
+                    ep = fut.result(timeout=_EPISODE_TIMEOUT)
+                except TimeoutError:
+                    pbar.write(
+                        f"! {t}/{s} timed out after {_EPISODE_TIMEOUT}s "
+                        f"(OOM or hung browser) — skipping"
+                    )
+                    pbar.update(1)
+                    continue
                 except Exception as e:
                     pbar.write(f"! {t}/{s} failed: {e}")
                     pbar.update(1)

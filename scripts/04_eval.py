@@ -58,7 +58,7 @@ def main(
     headless: bool = True,
     agent_cfg: str = "configs/agent/rl_refiner.yaml",
     prompt_cfg: str = "configs/agent/prompt_only.yaml",
-    workers: int = 32,
+    workers: int = 8,
     planner_workers: int = 64,
 ):
     tasks = HELD_OUT_TASKS if held_out else DEFAULT_TASKS

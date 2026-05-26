@@ -47,7 +47,7 @@ def main(
     out: str = "data/traces/bc.jsonl",
     max_steps: int = 25,
     headless: bool = True,
-    workers: int = 32,
+    workers: int = 8,
     planner_workers: int = 96,
 ):
     ec = OmegaConf.load(env_cfg)
