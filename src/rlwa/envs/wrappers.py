@@ -121,5 +121,4 @@ def make_env(
     env = gym.wrappers.TimeLimit(env, max_episode_steps=max_steps)
     if shape_reward:
         env = RewardShapeWrapper(env, **(reward_kwargs or {}))
-    env.reset(seed=seed)
     return env

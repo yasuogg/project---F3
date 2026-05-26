@@ -41,6 +41,8 @@ class PromptOnlyAgent:
 
             failed = bool(err_msg)
             success = bool(info.get("env_reward", reward) > 0.5) or bool(info.get("success"))
+            if success:
+                ep.success = True
 
             ep.steps.append(StepRecord(
                 task=task, seed=seed, step=step, goal=obs["goal"],
