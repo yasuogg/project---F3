@@ -3,6 +3,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 from omegaconf import OmegaConf
+from tqdm import tqdm
 import tyro
 
 from rlwa.envs import make_env
