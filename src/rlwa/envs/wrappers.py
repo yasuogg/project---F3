@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
+import warnings
 from pathlib import Path
 from typing import Optional
 import gymnasium as gym
@@ -105,14 +106,16 @@ def make_env(
     env = None
     for tid in candidates:
         try:
-            env = gym.make(
-                tid,
-                headless=headless,
-                action_mapping=None,  # use high-level python actions
-                viewport={"width": viewport[0], "height": viewport[1]},
-                slow_mo=0,
-                wait_for_user_message=False,
-            )
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message="Overriding the task's")
+                env = gym.make(
+                    tid,
+                    headless=headless,
+                    action_mapping=None,  # use high-level python actions
+                    viewport={"width": viewport[0], "height": viewport[1]},
+                    slow_mo=0,
+                    wait_for_user_message=False,
+                )
             break
         except Exception as e:
             last_err = e
