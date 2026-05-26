@@ -1,8 +1,9 @@
 """Gemini-based vision planner.
 
-Uses google.generativeai with JSON response_mime_type for structured output.
+Uses google.genai with JSON response_mime_type for structured output.
 """
 from __future__ import annotations
+import io
 import os
 import json
 import time
@@ -17,34 +18,31 @@ from rlwa.utils.logging import warn
 
 class GeminiPlanner(Planner):
     def __init__(self, cfg):
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY env var not set")
-        genai.configure(api_key=api_key)
         self.cfg = cfg
-        self.genai = genai
+        self.client = genai.Client(api_key=api_key)
+        self.types = types
         self.model_name = cfg.planner.model
-        self._build_model()
+        self._build_config()
         self.top_k = int(cfg.planner.top_k_candidates)
         self.max_retries = int(cfg.planner.max_retries)
         self.backoff = float(cfg.planner.retry_backoff_s)
         self.enable_recovery = bool(cfg.planner.get("enable_recovery_prompt", True))
 
-    def _build_model(self):
-        self.model = self.genai.GenerativeModel(
-            self.model_name,
-            generation_config={
-                "temperature": float(self.cfg.planner.temperature),
-                "top_p": float(self.cfg.planner.top_p),
-                "max_output_tokens": int(self.cfg.planner.max_output_tokens),
-                "response_mime_type": "application/json",
-            },
+    def _build_config(self):
+        self.gen_config = self.types.GenerateContentConfig(
+            temperature=float(self.cfg.planner.temperature),
+            top_p=float(self.cfg.planner.top_p),
+            max_output_tokens=int(self.cfg.planner.max_output_tokens),
+            response_mime_type="application/json",
         )
 
     def set_model(self, model_name: str) -> None:
         self.model_name = model_name
-        self._build_model()
 
     def propose(
         self,
@@ -63,10 +61,17 @@ class GeminiPlanner(Planner):
             top_k=self.top_k,
             last_error=last_error if self.enable_recovery else None,
         )
+        buf = io.BytesIO()
+        som_image.save(buf, format="PNG")
+        image_part = self.types.Part.from_bytes(data=buf.getvalue(), mime_type="image/png")
         last_exc: Exception | None = None
         for attempt in range(self.max_retries):
             try:
-                resp = self.model.generate_content([prompt, som_image])
+                resp = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=[prompt, image_part],
+                    config=self.gen_config,
+                )
                 text = (resp.text or "").strip()
                 data = self._parse(text)
                 cands = self._to_candidates(data, mark_bids)

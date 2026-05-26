@@ -61,20 +61,20 @@ def main(
                 writer.write(ep)
     else:
         with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(_run_one, t, s, agent, max_steps, headless): (t, s) for t, s in jobs}
-        for fut in as_completed(futs):
-            t, s = futs[fut]
-            try:
-                ep = fut.result()
-            except Exception as e:
-                info(f"  ! {t}/{s} failed: {e}"); continue
-            n_total += 1
-            if ep.success:
-                n_succ += 1
-                with write_lock:
-                    writer.write(ep)
-            if n_total % 20 == 0:
-                info(f"  {n_total}/{len(jobs)}  succ-so-far={n_succ}")
+            futs = {ex.submit(_run_one, t, s, agent, max_steps, headless): (t, s) for t, s in jobs}
+            for fut in as_completed(futs):
+                t, s = futs[fut]
+                try:
+                    ep = fut.result()
+                except Exception as e:
+                    info(f"  ! {t}/{s} failed: {e}"); continue
+                n_total += 1
+                if ep.success:
+                    n_succ += 1
+                    with write_lock:
+                        writer.write(ep)
+                if n_total % 20 == 0:
+                    info(f"  {n_total}/{len(jobs)}  succ-so-far={n_succ}")
     writer.close(); planner.close()
     ok(f"Collected {n_succ}/{n_total} successful episodes -> {out}")
 
