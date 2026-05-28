@@ -2,18 +2,12 @@
 
 True parallelism via ProcessPoolExecutor: each worker process owns its own
 Playwright browser and Gemini client. No greenlet/thread conflicts.
-
-Usage:
-    # single-process (debug)
-    run_eval(agent, tasks, seeds, workers=1)
-
-    # multi-process (production)
-    run_eval(None, tasks, seeds, workers=8, agent_factory=MyFactory())
 """
 from __future__ import annotations
+import time
+from concurrent.futures import ProcessPoolExecutor, wait, FIRST_COMPLETED, Future
 from pathlib import Path
 from typing import List, Callable
-from concurrent.futures import ProcessPoolExecutor, as_completed, Future
 from tqdm import tqdm
 
 from rlwa.envs import make_env
@@ -43,9 +37,8 @@ def _proc_run(
 
 # ── public API ─────────────────────────────────────────────────────────────────
 
-# Seconds to wait for a single episode before declaring it hung.
-# 25 steps × 15s/step (Gemini + browser) = 375s; 480s gives comfortable headroom.
-_EPISODE_TIMEOUT = 480
+# Generous per-episode budget: 25 steps × 15s/step (Gemini + browser) + headroom.
+_EPISODE_TIMEOUT = 480  # seconds
 
 
 def run_eval(
@@ -63,13 +56,13 @@ def run_eval(
     Evaluate an agent across tasks x seeds.
 
     workers=1  — single process, uses `agent` directly.
-    workers>1  — spawns N processes; each calls agent_factory() once to build
-                 its own agent+planner+browser. `agent` is unused in this path.
-                 agent_factory must be picklable (top-level class or functools.partial).
+    workers>1  — spawns N processes via ProcessPoolExecutor. Each process calls
+                 agent_factory() once to build its own agent+planner+browser.
+                 agent_factory must be picklable (top-level class / functools.partial).
 
-    Concurrency is capped at min(workers, len(jobs)) so we never launch more
-    browsers than there are episodes. A per-episode timeout (_EPISODE_TIMEOUT s)
-    prevents hung OOM-killed workers from blocking the run forever.
+    Concurrency is capped at min(workers, len(jobs)).
+    Episodes that don't complete within _EPISODE_TIMEOUT seconds are logged and
+    skipped — hung/OOM workers never block the entire run.
     """
     if workers > 1 and agent_factory is None:
         warn("workers>1 requires agent_factory; falling back to workers=1")
@@ -77,15 +70,13 @@ def run_eval(
 
     env_kwargs = env_kwargs or {}
     jobs = [(t, s) for t in tasks for s in seeds]
-
-    # Never spawn more processes than there are jobs — wastes memory/browsers.
-    effective_workers = min(workers, len(jobs)) if workers > 1 else 1
+    effective = min(workers, len(jobs)) if workers > 1 else 1
 
     eps: List[EpisodeRecord] = []
     writer = JsonlWriter(out_jsonl, mode="w") if out_jsonl else None
-    pbar = tqdm(total=len(jobs), desc=f"eval(x{effective_workers})")
+    pbar = tqdm(total=len(jobs), desc=f"eval(x{effective})")
 
-    if effective_workers <= 1:
+    if effective <= 1:
         for t, s in jobs:
             env = make_env(t, seed=s, headless=headless, max_steps=max_steps, **env_kwargs)
             try:
@@ -99,34 +90,51 @@ def run_eval(
             pbar.set_postfix(task=t.split(".")[-1], succ=int(ep.success))
     else:
         with ProcessPoolExecutor(
-            max_workers=effective_workers,
+            max_workers=effective,
             initializer=_proc_init,
             initargs=(agent_factory,),
         ) as pool:
-            futs: dict[Future, tuple[str, int]] = {
-                pool.submit(_proc_run, t, s, max_steps, headless, env_kwargs): (t, s)
-                for t, s in jobs
-            }
-            for fut in as_completed(futs):
-                t, s = futs[fut]
-                try:
-                    ep = fut.result(timeout=_EPISODE_TIMEOUT)
-                except TimeoutError:
+            # Submit all jobs and record when each one started.
+            start_time: dict[Future, float] = {}
+            futs: dict[Future, tuple[str, int]] = {}
+            for t, s in jobs:
+                f = pool.submit(_proc_run, t, s, max_steps, headless, env_kwargs)
+                futs[f] = (t, s)
+                start_time[f] = time.monotonic()
+
+            pending: set[Future] = set(futs)
+
+            # Poll loop: wait up to 5s for any completion, then expire overdue futures.
+            while pending:
+                done, pending = wait(pending, timeout=5.0, return_when=FIRST_COMPLETED)
+
+                # Process futures that actually finished.
+                for fut in done:
+                    t, s = futs[fut]
+                    try:
+                        ep = fut.result()
+                    except Exception as e:
+                        pbar.write(f"! {t}/{s} failed: {e}")
+                        pbar.update(1)
+                        continue
+                    eps.append(ep)
+                    if writer:
+                        writer.write(ep)
+                    pbar.update(1)
+                    pbar.set_postfix(task=t.split(".")[-1], succ=int(ep.success))
+
+                # Expire futures that have been running too long (OOM / hung browser).
+                now = time.monotonic()
+                expired = {f for f in pending if now - start_time[f] > _EPISODE_TIMEOUT}
+                for fut in expired:
+                    t, s = futs[fut]
                     pbar.write(
                         f"! {t}/{s} timed out after {_EPISODE_TIMEOUT}s "
-                        f"(OOM or hung browser) — skipping"
+                        f"(hung/OOM worker) — skipping"
                     )
                     pbar.update(1)
-                    continue
-                except Exception as e:
-                    pbar.write(f"! {t}/{s} failed: {e}")
-                    pbar.update(1)
-                    continue
-                eps.append(ep)
-                if writer:
-                    writer.write(ep)
-                pbar.update(1)
-                pbar.set_postfix(task=t.split(".")[-1], succ=int(ep.success))
+                    pending.discard(fut)
+                    fut.cancel()  # no-op if already running; marks future as cancelled
 
     pbar.close()
     if writer:

@@ -62,14 +62,14 @@ def main(
             eps.append(ep); writer.write(ep); pbar.update(1); pbar.set_postfix(succ=int(ep.success))
     else:
         with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = {ex.submit(_run, t, s): (t, s) for t, s in jobs}
-        for fut in as_completed(futs):
-            t, s = futs[fut]
-            try: ep = fut.result()
-            except Exception as e: pbar.write(f"! {t}/{s}: {e}"); pbar.update(1); continue
-            eps.append(ep)
-            with write_lock: writer.write(ep)
-            pbar.update(1); pbar.set_postfix(succ=int(ep.success))
+            futs = {ex.submit(_run, t, s): (t, s) for t, s in jobs}
+            for fut in as_completed(futs):
+                t, s = futs[fut]
+                try: ep = fut.result()
+                except Exception as e: pbar.write(f"! {t}/{s}: {e}"); pbar.update(1); continue
+                eps.append(ep)
+                with write_lock: writer.write(ep)
+                pbar.update(1); pbar.set_postfix(succ=int(ep.success))
     pbar.close(); writer.close()
 
     agg = aggregate(eps)

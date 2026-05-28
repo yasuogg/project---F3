@@ -1,12 +1,30 @@
 """BrowserGym env factory + reward-shaping wrapper."""
 from __future__ import annotations
 import hashlib
+import logging
 import os
 import subprocess
-import warnings
 from pathlib import Path
 from typing import Optional
 import gymnasium as gym
+
+
+# browsergym emits "Overriding the task's viewport/slow_mo ..." via logging.warning
+# on every env construction. With 800 episodes × N workers this floods the console.
+# Logger-level filters only catch records emitted by *that* logger (not children
+# whose records merely propagate), so we attach to handlers instead — covering
+# lastResort and any handlers already configured on root / browsergym.
+class _DropTaskOverrideMsg(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not record.getMessage().startswith("Overriding the task's")
+
+
+_drop_filter = _DropTaskOverrideMsg()
+if logging.lastResort is not None:
+    logging.lastResort.addFilter(_drop_filter)
+for _lname in ("", "browsergym"):
+    for _h in logging.getLogger(_lname).handlers:
+        _h.addFilter(_drop_filter)
 
 
 def _ensure_miniwob_url():
@@ -106,16 +124,14 @@ def make_env(
     env = None
     for tid in candidates:
         try:
-            with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", message="Overriding the task's")
-                env = gym.make(
-                    tid,
-                    headless=headless,
-                    action_mapping=None,  # use high-level python actions
-                    viewport={"width": viewport[0], "height": viewport[1]},
-                    slow_mo=0,
-                    wait_for_user_message=False,
-                )
+            env = gym.make(
+                tid,
+                headless=headless,
+                action_mapping=None,  # use high-level python actions
+                viewport={"width": viewport[0], "height": viewport[1]},
+                slow_mo=0,
+                wait_for_user_message=False,
+            )
             break
         except Exception as e:
             last_err = e

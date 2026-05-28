@@ -97,22 +97,33 @@ class GeminiPlanner(Planner):
 
     def _to_candidates(self, data: dict, mark_bids: List[str]) -> List[ActionCandidate]:
         bid_set = set(mark_bids)
+        raw_cands = (data.get("candidates") or [])[: self.top_k]
         cands: List[ActionCandidate] = []
-        for c in (data.get("candidates") or [])[: self.top_k]:
+        dropped_bids: List[str] = []
+        for c in raw_cands:
             try:
                 cand = ActionCandidate(**c)
             except Exception:
                 continue
-            # if planner returned a mark number instead of bid, try to map it
+            if cand.bid:
+                cand.bid = cand.bid.strip().strip("[]")
+            # if planner returned a mark number instead of bid, map it
             if cand.bid and cand.bid.isdigit() and cand.bid not in bid_set:
                 idx = int(cand.bid) - 1
                 if 0 <= idx < len(mark_bids):
                     cand.bid = mark_bids[idx]
             # validate bid for targeted actions
             if cand.action_type in {"click", "fill", "select_option", "hover"} and cand.bid not in bid_set:
+                dropped_bids.append(cand.bid or "")
                 continue
             cands.append(cand)
-        # pad with noop if empty so downstream code never breaks
+        # If the planner DID propose something but every candidate failed bid
+        # validation, silent-noop padding masks the problem (agent does nothing
+        # for 25 steps and the episode looks like a legit failure). Surface it
+        # so 0%-SR runs are diagnosable from the logs.
+        if not cands and raw_cands:
+            warn(f"Planner returned {len(raw_cands)} cands; all dropped "
+                 f"(bids={dropped_bids!r}, mark_bids={mark_bids!r})")
         while len(cands) < self.top_k:
             cands.append(ActionCandidate(action_type="noop", p=0.0, rationale="pad"))
         # normalize p
